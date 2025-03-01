@@ -3,6 +3,7 @@ import { useState, useRef } from 'react';
 import { Button, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -36,17 +37,24 @@ export default function App() {
       );
       console.log("✅ Resized Image URI:", resizedImage.uri);
 
-      // ✅ Upload to Cloudinary
-      const cloudinaryUrl = await uploadToCloudinary(resizedImage.uri);
-      if (cloudinaryUrl) {
-        await sendImageToBackend(cloudinaryUrl);
-      }
-
-    } catch (error) {
-      console.error("❌ Error capturing image:", error);
-    }
-    setLoading(false);
-  }
+       // ✅ Upload to Cloudinary
+       const cloudinaryUrl = await uploadToCloudinary(resizedImage.uri);
+       if (cloudinaryUrl) {
+         // ✅ Retrieve Student ID from AsyncStorage
+         const studentId = await AsyncStorage.getItem("userId");
+ 
+         if (studentId) {
+           await sendImageToBackend(studentId, cloudinaryUrl);
+         } else {
+           console.error("❌ Error: Student ID not found in AsyncStorage");
+         }
+       }
+ 
+     } catch (error) {
+       console.error("❌ Error capturing image:", error);
+     }
+     setLoading(false);
+   }
 
   async function uploadToCloudinary(imageUri) {
     const data = new FormData();
@@ -77,7 +85,7 @@ export default function App() {
     }
   }
 
-  async function sendImageToBackend(imageUrl) {
+  async function sendImageToBackend(studentId, imageUrl) {
     try {
       const response = await fetch('http://192.168.248.175:5000/api/students/mark-attendance', {
         method: 'POST',
@@ -86,23 +94,28 @@ export default function App() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          studentId: "67c2b7d696020b4c90c13ebc",
-          capturedImage: imageUrl,  // ✅ FIXED: Changed from "capturedImageUrl"
+          studentId,
+          capturedImage: imageUrl,  
         }),
       });
-
+  
       const responseText = await response.text();
       console.log("Raw response:", responseText);
-
+  
       if (!response.ok) {
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
-
+  
       const result = JSON.parse(responseText);
       console.log('✅ Attendance Marked:', result);
-
+      
+  
+      // ✅ Reset UI whether matched or not
+    setCapturedImage(null);
+  
     } catch (error) {
       console.error('❌ Upload failed:', error.message);
+      alert('Failed to mark attendance');
     }
   }
 
